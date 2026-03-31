@@ -52,19 +52,21 @@ def build_vw_example(context: dict, action: int = None, reward: float = None) ->
 
 
 def get_reward(action: int, patient_replied: bool, was_high_risk: bool) -> float:
-    """Calculate reward signal based on patient response."""
     if action == 5:  # do_nothing
         return 0.0
 
-    if patient_replied:
-        if was_high_risk and action == 4:  # escalation worked
-            return 2.0
-        return 1.0  # any reply is good
-    else:
-        if action == 4:  # escalation with no response
-            return -0.3
-        return -0.5  # no response to reminder
+    if action == 4:  # escalate_to_doctor
+        if was_high_risk and patient_replied:
+            return 2.0   # escalation worked on high-risk patient
+        elif was_high_risk and not patient_replied:
+            return -0.3  # high-risk but no response
+        else:
+            return -1.0  # unnecessary escalation on low/medium risk
 
+    if patient_replied:
+        return 1.0   # any reminder got a reply
+    else:
+        return -0.5  # reminder ignored
 
 class HealOAgent:
     def __init__(self, epsilon=0.1):
