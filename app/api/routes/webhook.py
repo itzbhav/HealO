@@ -1,45 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Form
+from fastapi.responses import Response
+from app.core.groq_bot import get_bot_reply
 
-from app.api.routes.patients import get_db
-from app.schemas.response import ResponseCreate, ResponseResponse
-from app.services.response_service import create_response
+router = APIRouter(prefix="/webhook", tags=["webhook"])
 
-router = APIRouter(prefix="/webhook", tags=["Webhook"])
+@router.post("/whatsapp")
+async def whatsapp_webhook(
+    Body: str = Form(...),
+    From: str = Form(...)
+):
+    phone = From.replace("whatsapp:", "")
+    patient_message = Body.strip()
 
+    print(f"📩 {phone}: {patient_message}")
 
-@router.post("/whatsapp", response_model=dict)
-def whatsapp_webhook(payload: dict, db: Session = Depends(get_db)):
-    # Simulate WhatsApp webhook payload parsing
-    if "entry" not in payload or not payload["entry"]:
-        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+    # Get LLM reply
+    reply = get_bot_reply(phone, patient_message)
 
-    entry = payload["entry"][0]
-    if "changes" not in entry:
-        raise HTTPException(status_code=400, detail="No changes in webhook")
+    print(f"🤖 HealO: {reply}")
 
-    change = entry["changes"][0]
-    messages = change.get("value", {}).get("messages", [])
-    
-    for message in messages:
-        phone = message["from"]
-        raw_text = message["text"]["body"]
-        
-        # Find patient by phone number (in real app, this would use phone lookup)
-        # For now, assume patient_id=1
-        response = ResponseCreate(
-            patient_id=1,
-            raw_text=raw_text,
-            normalized_label="YES" if "yes" in raw_text.lower() else "NO" if "no" in raw_text.lower() else "OTHER"
-        )
-        create_response(db, response)
-    
-    return {"status": "received", "processed": len(messages)}
+    # Send back via TwiML
+    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response><Message>{reply}</Message></Response>"""
 
-
-@router.get("/whatsapp")
-def verify_whatsapp_webhook(hub_mode: str, hub_verify_token: str, hub_challenge: str):
-    # WhatsApp webhook verification
-    if hub_mode == "subscribe" and hub_verify_token == "healo_verify_token":
-        return hub_challenge
-    raise HTTPException(status_code=403, detail="Forbidden")
+    return Response(content=twiml, media_type="application/xml")

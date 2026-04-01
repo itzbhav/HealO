@@ -1,9 +1,9 @@
 from fastapi import FastAPI
-
 from app.api.routes.health import router as health_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.messages import router as messages_router
 from app.api.routes.webhook import router as webhook_router
+from app.api.routes.reminders import router as reminders_router  # ← ADD
 from app.core.config import settings
 
 app = FastAPI(
@@ -16,7 +16,7 @@ app.include_router(health_router)
 app.include_router(patients_router)
 app.include_router(messages_router)
 app.include_router(webhook_router)
-
+app.include_router(reminders_router)  # ← ADD
 
 @app.get("/")
 def root():
@@ -24,3 +24,13 @@ def root():
         "message": f"{settings.app_name} is running",
         "environment": settings.app_env
     }
+
+# ↓↓↓ ADD THESE LINES AT THE BOTTOM ↓↓↓
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.app_host,
+        port=settings.app_port,
+        reload=True
+    )
