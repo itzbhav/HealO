@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3 \"C:/Users/bhava/Desktop/CURRENT SEMESTER/HEALo/healo.db\" \"SELECT COUNT\\(*\\) FROM responses; SELECT COUNT\\(*\\) FROM message_logs; SELECT COUNT\\(*\\) FROM patients;\")",
+      "Bash(sqlite3 \"C:/Users/bhava/Desktop/CURRENT SEMESTER/HEALo/healo.db\" \"SELECT * FROM responses LIMIT 3;\")",
+      "Bash(sqlite3 \"C:/Users/bhava/Desktop/CURRENT SEMESTER/HEALo/healo.db\" \"SELECT * FROM patients LIMIT 3;\")",
+      "Bash(python -c ':*)",
+      "Bash(sqlite3:*)"
+    ]
+  }
+}

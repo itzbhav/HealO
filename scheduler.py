@@ -14,7 +14,7 @@ import pickle
 import os
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from twilio.rest import Client
 import vowpalwabbit as vw
@@ -133,8 +133,14 @@ def build_live_features(patient_id: int, disease: str) -> dict:
     # Days since last reply
     days_since_reply = (max(days_sent) - max(inbound_days)).days                        if len(inbound_days) > 0 else total_days
 
-    # Med taken rate
-    med_taken_rate = len(inbound[inbound["intent"] == "medication_taken"]) / total_days
+    # Med taken rate — query responses table (normalized_label) not message_logs
+    conn2 = get_conn()
+    med_count = conn2.execute("""
+        SELECT COUNT(*) FROM responses
+        WHERE patient_id = ? AND LOWER(normalized_label) IN ('yes','taken','done')
+    """, (patient_id,)).fetchone()[0]
+    conn2.close()
+    med_taken_rate = med_count / total_days
 
     # Latency drift
     if len(latencies) >= 6:
@@ -235,6 +241,56 @@ def log_to_db(patient_id, risk_score, action, message, log_date):
     conn.commit()
     conn.close()
 
+# ── Reward Function ───────────────────────────────────────────────────────────
+def compute_reward(action_str: str, responded: bool,
+                   was_high_risk: bool, patient_blocked: bool = False) -> float:
+    if patient_blocked:
+        return -1.0
+    if action_str == "escalate_to_doctor" and was_high_risk and responded:
+        return 2.0
+    if responded:
+        return 1.0
+    if action_str == "do_nothing":
+        return 0.0
+    return -0.5   # message sent but no response
+
+
+# ── Delayed Reward Loop ───────────────────────────────────────────────────────
+def apply_delayed_rewards():
+    """
+    Look at yesterday's actions. For each patient, check whether they
+    actually responded in the responses table. Compute a real reward and
+    update the VW bandit so it learns from true outcomes.
+    """
+    yesterday = (datetime.now().date() - timedelta(days=1)).isoformat()
+    conn = get_conn()
+    logs = conn.execute("""
+        SELECT drl.patient_id, drl.action_taken, drl.risk_score,
+               (SELECT COUNT(*) FROM responses r
+                WHERE r.patient_id = drl.patient_id
+                  AND date(r.received_at) = ?) AS responded
+        FROM daily_risk_log drl
+        WHERE drl.log_date = ?
+    """, (yesterday, yesterday)).fetchall()
+    conn.close()
+
+    if not logs:
+        print("   ℹ️  No yesterday logs found — skipping delayed reward update.")
+        return
+
+    updated = 0
+    for log in logs:
+        action_str = log["action_taken"] or "do_nothing"
+        was_high   = log["risk_score"] > 0.66
+        responded  = log["responded"] > 0
+        reward     = compute_reward(action_str, responded, was_high)
+        action_id  = next((k for k, v in ACTIONS.items() if v == action_str), 5)
+        update_bandit({"risk_score": log["risk_score"]}, log["risk_score"], action_id, reward)
+        updated += 1
+
+    print(f"   ✅ Delayed rewards applied for {updated} patients (yesterday: {yesterday})")
+
+
 # ── Main Daily Loop ───────────────────────────────────────────────────────
 def run_daily():
     print(f"\n{'='*58}")
@@ -249,6 +305,12 @@ def run_daily():
         print(f"   All other patients: scored + logged (no message sent)\n")
 
     ensure_daily_log_table()
+
+    # Apply real rewards from yesterday's patient responses before scoring today
+    print("📬 Applying delayed rewards from yesterday's responses...")
+    apply_delayed_rewards()
+    print()
+
     today = datetime.now().date().isoformat()
 
     conn = get_conn()
@@ -288,15 +350,16 @@ def run_daily():
         print(f"  [{risk_label:6}] {name:<28} risk={risk_score:.2f}  → {action_str}")
 
         # 4. Send ONLY to MY_TEST_NUMBER — all others are dry run
+        # Reward for this step is optimistic (0.5 prior); real reward applied
+        # tomorrow via apply_delayed_rewards() once patient response is known.
         reward = 0.0
         if action_id in [1, 2, 3] and message:
             if phone == MY_TEST_NUMBER:
-                # ✅ REAL SEND — this is your verified number
+                # ✅ REAL SEND
                 sent = send_whatsapp(phone, message)
                 if sent:
                     stats["real_sent"] += 1
-                    reward = 0.5
-                    # Log to message_logs
+                    reward = 0.5   # optimistic prior; corrected tomorrow
                     conn = get_conn()
                     conn.execute("""
                         INSERT INTO message_logs
@@ -307,12 +370,13 @@ def run_daily():
                     conn.commit()
                     conn.close()
             else:
-                # 📋 DRY RUN — score + log, skip Twilio
+                # 📋 DRY RUN — score + log, no Twilio call
                 stats["dry_run"] += 1
-                reward = 0.5  # optimistic prior for simulation
+                reward = 0.5   # optimistic prior; corrected tomorrow
 
         elif action_id == 4:
             stats["escalated"] += 1
+            reward = 0.0   # escalation reward resolved tomorrow
 
         # 5. Update RL bandit
         update_bandit(features, risk_score, action_id, reward)

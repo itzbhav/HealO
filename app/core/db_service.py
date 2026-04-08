@@ -11,12 +11,22 @@ def get_conn():
 
 # ── Patient ──────────────────────────────────────────────
 def get_patient_by_phone(phone: str):
-    """Look up patient by phone number"""
-    phone_clean = phone.replace("whatsapp:", "").replace("+", "").strip()
+    """Look up patient by phone number.
+    Tries both '+91...' and '91...' forms so it matches regardless of
+    how the number is stored or how Twilio sends it.
+    """
+    # Normalise: strip whatsapp: prefix and whitespace
+    stripped = phone.replace("whatsapp:", "").strip()
+    # Build both variants: with and without leading +
+    with_plus    = stripped if stripped.startswith("+") else "+" + stripped
+    without_plus = stripped.lstrip("+")
+
     conn = get_conn()
     patient = conn.execute("""
-        SELECT * FROM patients WHERE phone_number = ?
-    """, (phone_clean,)).fetchone()
+        SELECT * FROM patients
+        WHERE phone_number = ? OR phone_number = ?
+        LIMIT 1
+    """, (with_plus, without_plus)).fetchone()
     conn.close()
     return dict(patient) if patient else None
 
@@ -96,17 +106,41 @@ def book_appointment(patient_id: int, doctor_name: str,
 
 
 # ── Medication Logging ────────────────────────────────────
-def log_medication_taken(patient_id: int, taken: bool):
-    """Log whether patient took medication today"""
+def log_medication_taken(patient_id: int, taken: bool, raw_text: str = ""):
+    """Log whether patient took medication today into the responses table."""
     conn = get_conn()
     try:
         conn.execute("""
             INSERT INTO responses
-            (patient_id, response_type, response_value, created_at)
-            VALUES (?, 'medication', ?, ?)
-        """, (patient_id, 'yes' if taken else 'no', datetime.now()))
+            (patient_id, raw_text, normalized_label, sentiment, intent, received_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            patient_id,
+            raw_text or ("taken" if taken else "missed"),
+            "yes" if taken else "no",
+            "positive" if taken else "negative",
+            "medication_taken" if taken else "medication_missed",
+            datetime.now(),
+        ))
         conn.commit()
     except Exception as e:
         print(f"[log_medication_taken] Warning: {e}")
+    finally:
+        conn.close()
+
+
+def log_response(patient_id: int, raw_text: str, normalized_label: str,
+                 intent: str, sentiment: str = "neutral"):
+    """Generic response logger for any inbound patient message."""
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO responses
+            (patient_id, raw_text, normalized_label, sentiment, intent, received_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (patient_id, raw_text, normalized_label, sentiment, intent, datetime.now()))
+        conn.commit()
+    except Exception as e:
+        print(f"[log_response] Warning: {e}")
     finally:
         conn.close()
