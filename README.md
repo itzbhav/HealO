@@ -299,19 +299,6 @@ https://xxxx.ngrok-free.app/webhook/whatsapp
 | `/webhook/voice/{id}` | GET/POST | TwiML script served to Twilio for the call |
 | `/webhook/voice/response/{id}` | POST | Handle patient DTMF keypress response |
 
----
-
-## Rubric Mapping
-
-| Criteria | Implementation |
-|---|---|
-| **Input Data** (5 marks) | 502-patient synthetic dataset with 9 engineered features; real-time WhatsApp message stream; SQLite with 7 tables |
-| **Basic FL Requirement** (10 marks) | Flower framework; 3-clinic data partitions; local XGBoost per clinic; federated aggregation; global AUC 98.3% |
-| **Advanced AI** (10 marks) | RL contextual bandit with real delayed rewards (Vowpal Wabbit); LLM intent detection in any language (Groq/Llama 3.3); AI voice call with TTS (Amazon Polly); conversational bot with memory |
-| **Visualization** (3 marks) | React dashboard — risk trend chart, donut, FL accuracy bars, RL action distribution, XGBoost feature importance, animated KPI cards |
-| **Tool + GitHub** (2 marks) | Full-stack deployable system; source on GitHub |
-
-
 
 ---
 
