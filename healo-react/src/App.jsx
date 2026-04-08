@@ -152,7 +152,7 @@ export default function App() {
             <>
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 13, color: 'var(--txm)', lineHeight: 1.8 }}>
-                  Federated Learning trains across 3 clinic partitions independently, then aggregates into a global XGBoost dropout risk model.
+                  Federated Learning trains across 3 clinic partitions independently, then aggregates into a global ensemble dropout risk model.
                   The RL contextual bandit (Vowpal Wabbit) selects the optimal intervention per patient using the risk score as context.
                 </div>
               </div>
@@ -165,6 +165,37 @@ export default function App() {
             /* ── DASHBOARD VIEW ── */
             <>
               <KpiCards stats={stats} />
+
+              {/* ── ACTION CARDS ── */}
+              <div className="action-cards">
+                <div className="action-card" onClick={() => setActiveNav('Risk Engine')}>
+                  <div className="action-card-icon">🧠</div>
+                  <div className="action-card-title">Risk Engine</div>
+                  <div className="action-card-desc">
+                    FL clinic accuracy, RL action distribution &amp; XGBoost feature importance
+                  </div>
+                  <div className="action-card-cta">View model intelligence →</div>
+                </div>
+
+                <div className="action-card action-card--warn" onClick={() => setActiveNav('Interventions')}>
+                  <div className="action-card-icon">🔔</div>
+                  <div className="action-card-title">Interventions</div>
+                  <div className="action-card-desc">
+                    {stats?.high_risk ?? '…'} high-risk patients — escalated or silent for 3+ days
+                  </div>
+                  <div className="action-card-cta">Review &amp; call patients →</div>
+                </div>
+
+                <div className="action-card action-card--blue" onClick={() => setScheduleFor(patients[0] || null)}>
+                  <div className="action-card-icon">📤</div>
+                  <div className="action-card-title">Schedule Message</div>
+                  <div className="action-card-desc">
+                    Send a WhatsApp reminder to any patient directly via Twilio
+                  </div>
+                  <div className="action-card-cta">Compose message →</div>
+                </div>
+              </div>
+
               <RiskChart trend={trend} stats={stats} />
               <PatientTable
                 patients={visiblePatients}

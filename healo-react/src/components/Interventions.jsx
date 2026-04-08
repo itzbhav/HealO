@@ -65,6 +65,7 @@ export default function Interventions() {
         // OR genuinely high risk (>85%) with low adherence (<30%)
         const flagged = data
           .filter(p =>
+            p.risk_score >= 0.95 ||                                                          // always show critical
             (p.action_taken === 'escalate_to_doctor' && p.days_silent >= 3) ||
             (p.risk_score > 0.85 && (p.med_adherence || 0) < 0.3 && p.days_silent >= 2)
           )
